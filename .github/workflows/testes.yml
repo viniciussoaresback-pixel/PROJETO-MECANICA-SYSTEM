@@ -1,4 +1,4 @@
-# Roda os testes automáticos a cada envio para o main e em todo pull request.
+# Roda os testes automáticos a cada envio (qualquer branch) — o resultado aparece também nos pull requests.
 #   - verificação do código (Biome)
 #   - testes das funções (cálculos, validações, migração)
 #   - testes no navegador (computador e celular) no modo demonstração
@@ -7,8 +7,7 @@ name: Testes
 
 on:
   push:
-    branches: [main]
-  pull_request:
+    branches: ['**']
   workflow_dispatch: {}
 
 permissions:
