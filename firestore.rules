@@ -1,0 +1,92 @@
+rules_version = '2';
+
+// Regras de segurança do banco (Firestore) do Mecânica Pro.
+// Publique em: Console do Firebase → Firestore Database → Regras → cole este arquivo → Publicar.
+// (ou pelo terminal: firebase deploy --only firestore:rules)
+//
+// Resumo:
+// - Cada oficina só enxerga os próprios dados (oficinas/{oficinaId}/...).
+// - Só entra quem é "membro" da oficina (o dono ou alguém convidado por ele).
+// - O perfil "mecanico" não vê nem altera as despesas (financeiro) e não apaga registros.
+// - Coleções antigas (clientes/servicos com userId) ficam só para leitura, para a migração automática.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function logado() {
+      return request.auth != null;
+    }
+    function emailDoUsuario() {
+      return request.auth.token.email.lower();
+    }
+    function caminhoMembro(of) {
+      return /databases/$(database)/documents/oficinas/$(of)/membros/$(request.auth.uid);
+    }
+    function ehMembro(of) {
+      return logado() && (request.auth.uid == of || exists(caminhoMembro(of)));
+    }
+    function papel(of) {
+      return request.auth.uid == of ? 'dono' : get(caminhoMembro(of)).data.papel;
+    }
+    function ehDono(of) {
+      return ehMembro(of) && papel(of) == 'dono';
+    }
+    function caminhoConvite() {
+      return /databases/$(database)/documents/convites/$(emailDoUsuario());
+    }
+
+    // A qual oficina a pessoa pertence (só a própria pessoa lê e grava).
+    match /usuarios/{uid} {
+      allow read, write: if logado() && request.auth.uid == uid;
+    }
+
+    match /oficinas/{of} {
+      allow read: if ehMembro(of);
+      allow create, update: if logado() && request.auth.uid == of;
+
+      // Quem pode entrar na oficina
+      match /membros/{uid} {
+        allow read: if logado() && (uid == request.auth.uid || ehMembro(of));
+        // O dono se registra na própria oficina
+        allow create: if logado() && request.auth.uid == of && uid == of && request.resource.data.papel == 'dono';
+        // Quem foi convidado entra com o perfil que está no convite
+        allow create: if logado() && uid == request.auth.uid
+          && exists(caminhoConvite())
+          && get(caminhoConvite()).data.oficinaId == of
+          && request.resource.data.papel == get(caminhoConvite()).data.papel;
+        // Só o dono muda perfis ou remove pessoas (e ninguém remove o dono principal)
+        allow update, delete: if ehDono(of) && uid != of;
+      }
+
+      // Dados da oficina (nome, logo, textos)
+      match /config/{doc} {
+        allow read: if ehMembro(of);
+        allow write: if ehMembro(of) && papel(of) in ['dono', 'atendente'];
+      }
+
+      // Clientes, veículos, OS, estoque, agenda, equipe, financeiro…
+      // Mecânico: não vê despesas e não apaga registros.
+      match /{colecao}/{id} {
+        allow read, create, update: if colecao != 'membros' && colecao != 'config' && ehMembro(of)
+          && (colecao != 'despesas' || papel(of) != 'mecanico');
+        allow delete: if colecao != 'membros' && colecao != 'config' && ehMembro(of) && papel(of) != 'mecanico';
+      }
+    }
+
+    // Convites: o dono cria; a pessoa convidada lê o próprio convite e o apaga ao aceitar.
+    match /convites/{email} {
+      allow read: if logado() && (emailDoUsuario() == email || ehDono(resource.data.oficinaId));
+      allow create, update: if logado() && email == email.lower()
+        && ehDono(request.resource.data.oficinaId)
+        && request.resource.data.papel in ['dono', 'atendente', 'mecanico'];
+      allow delete: if logado() && (emailDoUsuario() == email || ehDono(resource.data.oficinaId));
+    }
+
+    // Versão antiga do sistema: só leitura dos próprios dados (para a migração automática).
+    match /clientes/{id} {
+      allow read: if logado() && resource.data.userId == request.auth.uid;
+    }
+    match /servicos/{id} {
+      allow read: if logado() && resource.data.userId == request.auth.uid;
+    }
+  }
+}

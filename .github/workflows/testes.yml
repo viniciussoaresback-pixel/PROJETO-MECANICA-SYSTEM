@@ -1,0 +1,80 @@
+# Roda os testes automáticos a cada envio para o main e em todo pull request.
+#   - verificação do código (Biome)
+#   - testes das funções (cálculos, validações, migração)
+#   - testes no navegador (computador e celular) no modo demonstração
+#   - testes do modo nuvem com os emuladores do Firebase (login, convites, regras de segurança)
+name: Testes
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sistema:
+    name: Código e telas
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tests/package-lock.json
+      - run: npm ci
+      - name: Verificação do código (Biome)
+        run: npm run lint
+      - name: Testes das funções
+        run: npm run unit
+      - name: Instalar navegador
+        run: npx playwright install --with-deps chromium
+      - name: Testes no navegador (computador e celular)
+        run: npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: relatorio-telas
+          path: tests/playwright-report
+          retention-days: 7
+
+  nuvem:
+    name: Modo nuvem (Firebase)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tests/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - name: Instalar navegador
+        run: npx playwright install --with-deps chromium
+      - name: Testes com os emuladores do Firebase
+        run: npm run e2e:nuvem
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: relatorio-nuvem
+          path: tests/playwright-report
+          retention-days: 7
