@@ -93,7 +93,8 @@ test('busca global (Ctrl+K) encontra cliente, OS e veículo', async ({ page }) =
   await page.locator('.busca-item', { hasText: /^Fernanda Lima Rocha/ }).last().click();
   await expect(page.locator('.detalhe-cab h2')).toContainText('Fernanda Lima Rocha');
   // Tecla "/" também abre
-  await page.locator('body').click({ position: { x: 5, y: 300 } });
+  await expect(page.locator('.modal-fundo')).toHaveCount(0);
+  await page.evaluate(() => document.activeElement?.blur());
   await page.keyboard.press('/');
   await expect(page.locator('.modal-busca')).toBeVisible();
   await page.keyboard.press('Escape');
