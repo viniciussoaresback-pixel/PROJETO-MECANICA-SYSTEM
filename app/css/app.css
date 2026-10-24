@@ -179,7 +179,7 @@ kbd {
 .btn-fantasma:hover { background: var(--sup-3); color: var(--txt); }
 .btn-fantasma.perigo { color: var(--erro); }
 .btn-sm { height: 32px; padding: 0 10px; font-size: 13px; border-radius: 8px; }
-.btn-largo { width: 100%; height: 44px; font-size: 15px; }
+.btn-largo { width: 100%; height: auto; min-height: 44px; padding: 8px 14px; font-size: 15px; white-space: normal; text-align: center; }
 .btn.carregando { position: relative; color: transparent !important; }
 .btn.carregando::after {
   content: ''; position: absolute; width: 18px; height: 18px; border-radius: 50%;
@@ -240,7 +240,7 @@ kbd {
 @keyframes girar { to { transform: rotate(360deg); } }
 
 /* ---------- Tela de entrada ---------- */
-.entrada { min-height: 100vh; display: grid; grid-template-columns: 1.1fr 1fr; }
+.entrada { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
 .entrada-marca {
   background: radial-gradient(1200px 600px at 10% -10%, #1e3a8a 0%, transparent 60%), linear-gradient(160deg, #0f172a 0%, #111c35 60%, #0b1324 100%);
   color: #e2e8f0; padding: 56px 64px; display: flex; flex-direction: column; justify-content: center; gap: 28px;
@@ -845,7 +845,7 @@ a.lista-item:hover, .lista-item.clicavel:hover { background: var(--sup-2); text-
   .app.menu-aberto .lateral { transform: none; }
   .app.menu-aberto .cortina { display: block; position: fixed; inset: 0; z-index: 45; background: rgba(2, 6, 23, 0.5); }
   .so-menu-movel { display: inline-grid; }
-  .entrada { grid-template-columns: 1fr; }
+  .entrada { grid-template-columns: minmax(0, 1fr); }
   .entrada-marca { display: none; }
   .so-celular { display: flex !important; }
   .busca-global { display: none; }
