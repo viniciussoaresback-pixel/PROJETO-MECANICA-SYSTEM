@@ -1,0 +1,78 @@
+/* Documentos impressos (OS, orçamento, recibo, relatórios).
+   Na tela aparecem dentro da pré-visualização; na impressão só o #area-impressao vai para o papel. */
+
+#area-impressao { display: none; }
+
+.folha-area { background: #e5e7eb; margin: -20px -22px; padding: 24px; display: flex; justify-content: center; min-height: 60vh; }
+:root[data-tema='escuro'] .folha-area { background: #0b1120; }
+.folha { width: 100%; max-width: 794px; background: #fff; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18); padding: 36px 40px; border-radius: 4px; }
+.modal-impressao .rod-dica { margin-right: auto; font-size: 13px; }
+
+.doc { color: #111827; font-family: var(--fonte, system-ui, sans-serif); font-size: 12.5px; line-height: 1.45; }
+.doc * { color: inherit; }
+.doc-cab { display: flex; justify-content: space-between; gap: 20px; padding-bottom: 14px; border-bottom: 2px solid #111827; margin-bottom: 16px; }
+.doc-oficina { display: flex; gap: 14px; align-items: flex-start; color: #374151; font-size: 11.5px; }
+.doc-logo { width: 74px; height: 74px; object-fit: contain; }
+.doc-oficina-nome { font-size: 18px; font-weight: 800; color: #111827; text-transform: uppercase; letter-spacing: 0.01em; margin-bottom: 2px; }
+.doc-numero { text-align: right; flex-shrink: 0; }
+.doc-tipo { font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #374151; }
+.doc-num { font-size: 22px; font-weight: 800; color: #111827; }
+.doc-sub { font-size: 11.5px; color: #4b5563; }
+.doc-grade2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.doc-caixa { border: 1px solid #d1d5db; border-radius: 6px; padding: 10px 12px; }
+.doc-rotulo { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: #6b7280; margin-bottom: 4px; }
+.doc-forte { font-size: 14px; font-weight: 700; color: #111827; }
+.doc-datas { display: flex; flex-wrap: wrap; gap: 6px 24px; padding: 8px 12px; background: #f3f4f6; border-radius: 6px; margin-bottom: 12px; }
+.doc-datas div { display: flex; flex-direction: column; }
+.doc-datas span { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; font-weight: 700; }
+.doc-secao { margin: 10px 0; }
+.doc-texto { white-space: pre-wrap; }
+.doc-checklist { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.doc-tabela { width: 100%; border-collapse: collapse; margin: 12px 0 4px; }
+.doc-tabela th { background: #f3f4f6; text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; padding: 7px 8px; border-bottom: 1.5px solid #9ca3af; color: #374151; }
+.doc-tabela td { padding: 6px 8px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+.doc-tabela .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.doc-cod { font-size: 10.5px; color: #6b7280; }
+.doc-totais { display: flex; justify-content: space-between; gap: 24px; margin-top: 12px; align-items: flex-start; }
+.doc-totais-esq { flex: 1; font-size: 12px; }
+.doc-garantia { margin-top: 8px; }
+.doc-soma { border-collapse: collapse; min-width: 240px; }
+.doc-soma td { padding: 4px 0; font-variant-numeric: tabular-nums; }
+.doc-soma td:last-child { text-align: right; padding-left: 24px; white-space: nowrap; }
+.doc-soma .doc-total td { font-size: 17px; font-weight: 800; border-top: 2px solid #111827; padding-top: 8px; }
+.doc-soma .doc-saldo td { font-weight: 700; }
+.doc-termo { font-size: 10.5px; color: #4b5563; }
+.doc-aprovacao { margin-top: 18px; font-size: 12px; }
+.doc-assinaturas { display: flex; gap: 40px; margin-top: 46px; }
+.doc-assinaturas div { flex: 1; border-top: 1px solid #6b7280; padding-top: 6px; text-align: center; font-size: 11px; color: #4b5563; }
+.doc-assinatura-unica { justify-content: center; }
+.doc-assinatura-unica div { flex: 0 1 360px; }
+.doc-rodape { margin-top: 22px; text-align: center; font-size: 10.5px; color: #6b7280; }
+.recibo-valor { font-size: 28px; font-weight: 800; text-align: right; margin: 6px 0 16px; }
+.recibo-texto { font-size: 14px; line-height: 1.7; margin: 10px 0; }
+.recibo-local { margin-top: 24px; text-align: right; font-size: 13px; }
+.doc-relatorio h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; margin: 18px 0 6px; color: #374151; }
+.doc-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.doc-kpis div { border: 1px solid #d1d5db; border-radius: 6px; padding: 8px 10px; }
+.doc-kpis span { display: block; font-size: 10px; text-transform: uppercase; color: #6b7280; font-weight: 700; }
+.doc-kpis strong { font-size: 15px; }
+
+@media (max-width: 640px) {
+  .folha-area { margin: -16px; padding: 10px; }
+  .folha { padding: 18px 14px; }
+  .doc-cab { flex-direction: column; }
+  .doc-numero { text-align: left; }
+  .doc-grade2 { grid-template-columns: 1fr; }
+  .doc-totais { flex-direction: column; }
+  .doc-soma { width: 100%; }
+}
+
+@media print {
+  @page { size: A4; margin: 12mm; }
+  html, body { background: #fff !important; }
+  body.imprimindo > *:not(#area-impressao) { display: none !important; }
+  body.imprimindo #area-impressao { display: block !important; }
+  #area-impressao .doc { font-size: 11.5px; }
+  .doc-tabela tr, .doc-caixa, .doc-totais, .doc-assinaturas { break-inside: avoid; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

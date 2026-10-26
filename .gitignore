@@ -1,0 +1,7 @@
+node_modules/
+tests/test-results/
+tests/playwright-report/
+tests/.cache/
+*.log
+.DS_Store
+.firebase/
