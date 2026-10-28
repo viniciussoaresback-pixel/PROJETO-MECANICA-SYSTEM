@@ -54,13 +54,17 @@ No [Console do Firebase](https://console.firebase.google.com/), projeto **mecani
    [`firestore.rules`](firestore.rules) e clique em **Publicar**.
    ⚠️ **Este passo é obrigatório.** Sem ele o sistema não consegue ler/gravar (ou, pior, os dados ficam abertos).
 4. **Authentication → Settings → Authorized domains**: adicione o endereço onde o site vai ficar
-   (ex.: `mecanica-pro.vercel.app`).
+   (ex.: `mecanica-pro.netlify.app`).
 
 ### 2. Publicar o site
 
 Escolha **um** dos caminhos:
 
-- **Vercel (recomendado):** importe este repositório em [vercel.com](https://vercel.com/new) e, em
+- **Netlify (recomendado):** em [app.netlify.com](https://app.netlify.com/start), clique em *Import from Git*,
+  escolha este repositório e a branch **`main`**. O arquivo [`netlify.toml`](netlify.toml) já diz tudo
+  (pasta `app`, sem comando de build), então é só clicar em **Deploy**. Cada mudança no `main` publica sozinha.
+  Também dá para arrastar a pasta `app` direto em [app.netlify.com/drop](https://app.netlify.com/drop).
+- **Vercel:** importe este repositório em [vercel.com](https://vercel.com/new) e, em
   *Root Directory*, escolha a pasta **`app`**. Não precisa de comando de build. Cada mudança no `main` publica sozinha.
 - **Firebase Hosting:** com o [Firebase CLI](https://firebase.google.com/docs/cli) instalado, rode na raiz do
   repositório: `firebase deploy --only hosting,firestore:rules` (já publica as regras junto).
