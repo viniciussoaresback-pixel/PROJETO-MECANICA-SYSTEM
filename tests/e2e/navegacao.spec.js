@@ -119,3 +119,32 @@ test('sair da demonstração volta para a tela de entrada', async ({ page }) => 
   await page.getByRole('button', { name: 'Sair da demonstração' }).click();
   await expect(page.getByRole('tab', { name: 'Entrar' })).toBeVisible();
 });
+
+test('modo offline: depois da primeira visita, o sistema abre sem internet', async ({ page, context }) => {
+  const erros = vigiarErros(page);
+  await bloquearExternos(page);
+  await page.addInitScript(() => localStorage.setItem('mp:sw-local', '1'));
+  await page.goto('/?demo');
+  await expect(page.locator('.lateral')).toBeVisible();
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+  });
+  await page.reload();
+  await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
+  await context.setOffline(true);
+  await page.reload();
+  await expect(page.locator('.lateral')).toBeVisible();
+  await irPara(page, '#/os/nova');
+  await expect(page.locator('[data-cli-busca]')).toBeVisible();
+  await context.setOffline(false);
+  expect(erros).toEqual([]);
+});
+
+test('segurança: a página declara a política de conteúdo (CSP) e não usa script dentro do HTML', async ({ page }) => {
+  await bloquearExternos(page);
+  const resp = await page.goto('/');
+  const htmlTexto = await resp.text();
+  expect(htmlTexto).toContain('Content-Security-Policy');
+  expect(htmlTexto).not.toMatch(/<script>(?!\s*<\/script>)/);
+  expect(htmlTexto).not.toMatch(/\son(load|click|error)=/);
+});

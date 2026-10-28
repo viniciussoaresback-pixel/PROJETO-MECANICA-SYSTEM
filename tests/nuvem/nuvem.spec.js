@@ -26,7 +26,7 @@ async function listarAdmin(caminho) {
 }
 async function gravarDocAdmin(colecao, id, campos) {
   const fields = {};
-  for (const [k, v] of Object.entries(campos)) fields[k] = typeof v === 'number' ? { doubleValue: v } : { stringValue: String(v) };
+  for (const [k, v] of Object.entries(campos)) fields[k] = typeof v === 'number' ? { doubleValue: v } : typeof v === 'boolean' ? { booleanValue: v } : { stringValue: String(v) };
   const r = await fetch(`${FS}/${colecao}?documentId=${id}`, { method: 'POST', headers: { Authorization: 'Bearer owner', 'Content-Type': 'application/json' }, body: JSON.stringify({ fields }) });
   if (!r.ok) throw new Error(await r.text());
 }
@@ -63,8 +63,15 @@ async function entrar(page, email, senha = 'segredo123') {
 
 let uidDono = '';
 
+async function apagarDocAdmin(caminho) {
+  await fetch(`${FS}/${caminho.split('/').map(encodeURIComponent).join('/')}`, { method: 'DELETE', headers: { Authorization: 'Bearer owner' } });
+}
+const abrirCadastro = () => gravarDocAdmin('sistema', 'cadastro', { aberto: true });
+const fecharCadastro = () => apagarDocAdmin('sistema/cadastro');
+
 test.beforeAll(async () => {
   await limparEmuladores();
+  await abrirCadastro();
 });
 
 test('cria a conta da oficina e os dados ficam salvos na nuvem', async ({ page }) => {
@@ -211,7 +218,7 @@ test('outra oficina não consegue ler os dados desta', async ({ page }) => {
       }
     }
     try {
-      await F.setDoc(F.doc(db, 'oficinas', of, 'membros', 'intruso'), { papel: 'dono' });
+      await F.setDoc(F.doc(db, 'oficinas', of, 'membros', 'intruso'), { papel: 'dono', nome: 'x', email: 'x', desde: 'x' });
       r.invadir = 'gravou';
     } catch (e) {
       r.invadir = e.code;
@@ -262,6 +269,105 @@ test('botão Sair desloga e volta para a tela de entrada', async ({ page }) => {
   // Continua deslogado depois de recarregar
   await page.reload();
   await expect(page.getByRole('tab', { name: 'Entrar' })).toBeVisible({ timeout: 20_000 });
+});
+
+test('vários aparelhos: o que um grava ou apaga aparece no outro, e continua certo depois de reabrir', async ({ browser }) => {
+  const ctxA = await browser.newContext();
+  const ctxB = await browser.newContext();
+  const a = await ctxA.newPage();
+  const b = await ctxB.newPage();
+  const errosA = vigiarErros(a);
+  for (const p of [a, b]) {
+    await prepararPagina(p);
+    await entrar(p, 'dono@teste.com');
+    await expect(p.locator('.lateral')).toBeVisible({ timeout: 20_000 });
+    await p.evaluate(() => {
+      location.hash = '#/clientes';
+    });
+  }
+  // B cadastra, A vê na hora
+  const id = await lerStore(b, "(s) => s.adicionar('clientes', { nome: 'Cliente Sincronizado', tipo: 'PF', telefone: '11999990000' }).id");
+  await expect(a.getByText('Cliente Sincronizado')).toBeVisible({ timeout: 15_000 });
+  // B apaga, A vê sumir
+  await lerStore(b, `(s) => { s.remover('clientes', '${id}'); return s.aguardarGravacoes(); }`);
+  await expect(a.getByText('Cliente Sincronizado')).toHaveCount(0, { timeout: 15_000 });
+  // No banco fica só a marca de excluído, sem os dados pessoais
+  const doc = await lerDocAdmin(`oficinas/${uidDono}/clientes/${id}`);
+  expect(doc.fields.excluido.booleanValue).toBe(true);
+  expect(doc.fields.nome).toBeUndefined();
+  // B cadastra outro com A fechado; A reabre (usa a cópia local + só o que mudou)
+  await a.close();
+  await lerStore(b, "(s) => { s.adicionar('clientes', { nome: 'Cliente Depois', tipo: 'PF' }); return s.aguardarGravacoes(); }");
+  const a2 = await ctxA.newPage();
+  await prepararPagina(a2);
+  await a2.goto('/#/clientes');
+  await expect(a2.locator('.lateral')).toBeVisible({ timeout: 20_000 });
+  await expect(a2.getByText('Cliente Depois')).toBeVisible({ timeout: 15_000 });
+  await expect(a2.getByText('Maria da Nuvem')).toBeVisible();
+  await expect(a2.getByText('Cliente Sincronizado')).toHaveCount(0);
+  const sinc = await a2.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('mp:sinc:')).length);
+  expect(sinc).toBeGreaterThan(0);
+  expect(errosA).toEqual([]);
+  await ctxA.close();
+  await ctxB.close();
+});
+
+test('cadastro fechado: conta nova sem liberação não abre oficina e não grava nada', async ({ page, browser }) => {
+  await fecharCadastro();
+  try {
+    await prepararPagina(page);
+    await page.goto('/');
+    await page.getByRole('tab', { name: 'Criar conta' }).click();
+    await page.getByLabel('Seu nome').fill('Estranho');
+    await page.locator('[data-form=criar]').getByLabel('E-mail').fill('estranho@teste.com');
+    await page.locator('[data-form=criar] input[name=senha]').fill('segredo123');
+    await page.locator('[data-form=criar]').getByRole('button', { name: 'Criar conta' }).click();
+    await expect(page.getByText(/ainda não pode abrir uma oficina/)).toBeVisible({ timeout: 20_000 });
+    // O login criado sem liberação foi apagado
+    const r = await fetch(`${AUTH}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=teste`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'estranho@teste.com', password: 'segredo123', returnSecureToken: true }) });
+    expect(r.ok).toBe(false);
+
+    // Mesmo indo direto no banco (sem usar o site), uma conta sem oficina não grava nada
+    await criarUsuarioAuth('robo@teste.com', 'segredo123');
+    // Página sem o sistema aberto (só o Firebase), como um robô usando a chave pública
+    // (contexto separado: o login do robô não pode se misturar com o da página acima)
+    const ctxRobo = await browser.newContext();
+    const robo = await ctxRobo.newPage();
+    await prepararPagina(robo);
+    await robo.goto('/manifest.webmanifest');
+    const resultado = await robo.evaluate(async () => {
+      const n = await import('/js/nuvem.js');
+      const { auth, db, A, F } = await n.carregarFirebase();
+      const cred = await A.signInWithEmailAndPassword(auth, 'robo@teste.com', 'segredo123');
+      const uid = cred.user.uid;
+      const tentar = async (fn) => {
+        try {
+          await fn();
+          return 'gravou';
+        } catch (e) {
+          return e.code;
+        }
+      };
+      return {
+        oficina: await tentar(() => F.setDoc(F.doc(db, 'oficinas', uid), { dono: uid, criadoEm: 'x' })),
+        membro: await tentar(() => F.setDoc(F.doc(db, 'oficinas', uid, 'membros', uid), { papel: 'dono', nome: 'r', email: 'r', desde: 'x' })),
+        dados: await tentar(() => F.setDoc(F.doc(db, 'oficinas', uid, 'clientes', 'lixo'), { nome: 'lixo' })),
+      };
+    });
+    expect(resultado).toEqual({ oficina: 'permission-denied', membro: 'permission-denied', dados: 'permission-denied' });
+    await ctxRobo.close();
+
+    // Liberando o e-mail, a oficina abre normalmente
+    await gravarDocAdmin('liberados', 'liberado@teste.com', { por: 'teste' });
+    const ctx2 = await browser.newContext();
+    const p2 = await ctx2.newPage();
+    await prepararPagina(p2);
+    await criarConta(p2, { oficina: 'Oficina Liberada', nome: 'Liberado', email: 'liberado@teste.com' });
+    await expect(p2.locator('[data-nome-oficina]')).toHaveText('Oficina Liberada');
+    await ctx2.close();
+  } finally {
+    await abrirCadastro();
+  }
 });
 
 test('mensagens de erro de login em português', async ({ page }) => {

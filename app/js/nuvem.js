@@ -6,13 +6,14 @@
 //   oficinas/{oficinaId}/config/oficina -> dados da oficina
 //   oficinas/{oficinaId}/{colecao}/{id} -> clientes, veiculos, ordens, pecas…
 //   convites/{email}                    -> { oficinaId, papel, nome }
-import { FIREBASE_CONFIG, FIREBASE_VERSAO, PERMITIR_NOVAS_OFICINAS } from './firebase-config.js';
+import { APP_CHECK_CHAVE, FIREBASE_CONFIG, FIREBASE_VERSAO, PERMITIR_NOVAS_OFICINAS } from './firebase-config.js';
 import { converterDadosAntigos } from './migracao.js';
-import { COLECOES, ehIncremento } from './store.js';
+import { aplicarPatch, COLECOES, ehIncremento } from './store.js';
 import { addDias, agoraISO, hojeISO } from './utils.js';
 
 const BASE = `https://www.gstatic.com/firebasejs/${FIREBASE_VERSAO}`;
 let fb = null;
+let semCacheLocal = false;
 
 function usarEmulador() {
   try {
@@ -30,18 +31,29 @@ export async function carregarFirebase() {
     import(`${BASE}/firebase-firestore.js`),
   ]);
   const app = appMod.initializeApp(FIREBASE_CONFIG);
+  // App Check: só o seu site consegue usar o banco (bloqueia robôs usando a chave pública do Firebase).
+  if (APP_CHECK_CHAVE && !usarEmulador()) {
+    try {
+      const ac = await import(`${BASE}/firebase-app-check.js`);
+      ac.initializeAppCheck(app, { provider: new ac.ReCaptchaV3Provider(APP_CHECK_CHAVE), isTokenAutoRefreshEnabled: true });
+    } catch (e) {
+      console.warn('App Check não iniciado', e);
+    }
+  }
   const auth = authMod.getAuth(app);
   auth.languageCode = 'pt';
   let db;
   try {
     db = fsMod.initializeFirestore(app, {
       ignoreUndefinedProperties: true,
-      localCache: fsMod.persistentLocalCache({ tabManager: fsMod.persistentMultipleTabManager() }),
+      // Sem limite de tamanho: a cópia local nunca é apagada sozinha (a sincronização só baixa o que mudou).
+      localCache: fsMod.persistentLocalCache({ tabManager: fsMod.persistentMultipleTabManager(), cacheSizeBytes: fsMod.CACHE_SIZE_UNLIMITED }),
     });
   } catch (e) {
     // Navegador sem IndexedDB (ex.: janela anônima em alguns celulares): funciona só com internet.
     console.warn('Cache offline indisponível', e);
     db = fsMod.initializeFirestore(app, { ignoreUndefinedProperties: true });
+    semCacheLocal = true;
   }
   if (usarEmulador()) {
     authMod.connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
@@ -59,7 +71,7 @@ const ERROS = {
   'auth/user-not-found': 'Não existe conta com este e-mail.',
   'auth/invalid-email': 'E-mail inválido.',
   'auth/email-already-in-use': 'Já existe uma conta com este e-mail. Use "Entrar".',
-  'auth/weak-password': 'Senha fraca: use pelo menos 6 caracteres.',
+  'auth/weak-password': 'Senha fraca: use pelo menos 8 caracteres, misturando letras e números.',
   'auth/too-many-requests': 'Muitas tentativas. Aguarde alguns minutos e tente de novo.',
   'auth/network-request-failed': 'Sem conexão com a internet.',
   'auth/requires-recent-login': 'Por segurança, saia e entre de novo antes de trocar a senha.',
@@ -68,7 +80,7 @@ const ERROS = {
   'permission-denied': 'O banco de dados recusou o acesso. Confira se as regras do arquivo firestore.rules foram publicadas no Firebase.',
   unavailable: 'Sem conexão com o servidor. Verifique a internet.',
   'acesso-removido': 'Seu acesso a esta oficina foi removido. Fale com o responsável.',
-  'cadastro-fechado': 'Para entrar, peça um convite ao responsável da oficina (Configurações → Usuários).',
+  'cadastro-fechado': 'Esta conta ainda não pode abrir uma oficina nova. Se você trabalha numa oficina, peça um convite ao responsável (Configurações → Usuários). Se é o dono, peça a liberação do seu e-mail ao responsável pelo sistema.',
 };
 
 export function mensagemErro(e) {
@@ -105,6 +117,7 @@ export async function encerrarSessao() {
   try {
     await F.terminate(db);
     await F.clearIndexedDbPersistence(db);
+    esquecerSincronia();
   } catch (e) {
     console.warn('Cópia local não apagada (outra aba aberta?)', e?.code);
   }
@@ -192,8 +205,14 @@ export async function resolverOficina(user, { nome = '', nomeOficina = '', crian
     lote.set(F.doc(db, 'oficinas', user.uid), { dono: user.uid, criadoEm: agoraISO() }, { merge: true });
     lote.set(F.doc(db, 'oficinas', user.uid, 'membros', user.uid), { nome: nomePessoa, email, papel: 'dono', desde: agoraISO() });
     lote.set(F.doc(db, 'usuarios', user.uid), { oficinaId: user.uid, email });
-    if (nomeOficina) lote.set(F.doc(db, 'oficinas', user.uid, 'config', 'oficina'), { nome: nomeOficina }, { merge: true });
-    await lote.commit();
+    try {
+      await lote.commit();
+    } catch (e) {
+      // As regras só deixam abrir oficina nova com liberação (ver firestore.rules).
+      if (e.code === 'permission-denied') throw erro('cadastro-fechado');
+      throw e;
+    }
+    if (nomeOficina) await F.setDoc(F.doc(db, 'oficinas', user.uid, 'config', 'oficina'), { nome: nomeOficina }, { merge: true });
     const s = { oficinaId: user.uid, papel: 'dono', nome: nomePessoa, novo: true };
     guardarSessao(user.uid, s);
     return s;
@@ -207,6 +226,10 @@ export async function resolverOficina(user, { nome = '', nomeOficina = '', crian
 }
 
 // ---------- Adaptador de dados ----------
+// Economia de leituras: cada registro gravado leva o campo "sinc" (hora do servidor).
+// Ao abrir o sistema, os dados vêm da cópia guardada no aparelho e o banco só manda
+// o que mudou desde a última vez (em vez de ler tudo de novo, o que custaria caro).
+// Apagar = marcar "excluido" (assim os outros aparelhos ficam sabendo da exclusão).
 function converterPatch(patch) {
   const { F } = fb;
   const r = {};
@@ -214,10 +237,99 @@ function converterPatch(patch) {
   return r;
 }
 
+const MARGEM_SINC = 10 * 60 * 1000; // relê 10 min antes da última sincronia, por segurança
+const chaveSinc = (of, col) => `mp:sinc:${of}:${col}`;
+
+function lerSincronia(of, col) {
+  try {
+    return Number(localStorage.getItem(chaveSinc(of, col))) || 0;
+  } catch {
+    return 0;
+  }
+}
+function gravarSincronia(of, col, ms) {
+  try {
+    localStorage.setItem(chaveSinc(of, col), String(ms));
+  } catch {
+    /* ok */
+  }
+}
+export function esquecerSincronia() {
+  try {
+    for (const k of Object.keys(localStorage)) if (k.startsWith('mp:sinc:')) localStorage.removeItem(k);
+  } catch {
+    /* ok */
+  }
+}
+
 export function criarAdaptadorNuvem(oficinaId, { papel } = {}) {
   const { db, F } = fb;
   const desligar = [];
   const ref = (col, id) => F.doc(db, 'oficinas', oficinaId, col, id);
+  const marca = () => ({ sinc: F.serverTimestamp() });
+  const umAno = addDias(hojeISO(), -365);
+  // Cópia de cada coleção montada aqui. As gravações deste aparelho entram na hora
+  // (mesmo sem internet): a tela já mostra pelo store, e aqui elas não somem no próximo aviso do banco.
+  const mapas = {};
+  function local(o) {
+    const mapa = mapas[o.col];
+    if (!mapa) return;
+    if (o.op === 'apagar') mapa.delete(o.id);
+    else if (o.op === 'alterar') {
+      if (mapa.has(o.id)) mapa.set(o.id, aplicarPatch(mapa.get(o.id), o.dados));
+    } else mapa.set(o.id, { ...o.dados, id: o.id });
+  }
+
+  async function ouvirColecao(col, cbs, pronto, falhou) {
+    const base = F.collection(db, 'oficinas', oficinaId, col);
+    const mapa = new Map();
+    mapas[col] = mapa;
+    let desde = semCacheLocal ? 0 : lerSincronia(oficinaId, col);
+    const guardar = (d) => {
+      const { sinc: _s, ...dados } = d.data();
+      if (dados.excluido || (col === 'movimentos' && dados.data && dados.data < umAno)) mapa.delete(d.id);
+      else mapa.set(d.id, { ...dados, id: d.id });
+    };
+    if (desde) {
+      try {
+        const cache = await F.getDocsFromCache(base);
+        if (cache.empty) desde = 0; // cópia local sumiu: baixa tudo de novo
+        else for (const d of cache.docs) guardar(d);
+      } catch {
+        desde = 0;
+      }
+    }
+    let q;
+    if (desde) q = F.query(base, F.where('sinc', '>', F.Timestamp.fromMillis(desde - MARGEM_SINC)));
+    else if (col === 'movimentos') q = F.query(base, F.where('data', '>=', umAno));
+    else q = base;
+    let primeira = true;
+    desligar.push(
+      F.onSnapshot(
+        q,
+        (snap) => {
+          for (const mud of snap.docChanges()) {
+            if (mud.type === 'removed' && !desde) mapa.delete(mud.doc.id);
+            else if (mud.type !== 'removed') guardar(mud.doc);
+          }
+          if (!snap.metadata.fromCache && !snap.metadata.hasPendingWrites) {
+            let maior = lerSincronia(oficinaId, col);
+            for (const d of snap.docs) {
+              const t = d.get('sinc');
+              if (t?.toMillis) maior = Math.max(maior, t.toMillis());
+            }
+            if (maior) gravarSincronia(oficinaId, col, maior);
+          }
+          cbs.aoColecao(col, [...mapa.values()]);
+          if (primeira) {
+            primeira = false;
+            pronto();
+          }
+        },
+        falhou,
+      ),
+    );
+  }
 
   return {
     tipo: 'nuvem',
@@ -240,25 +352,7 @@ export function criarAdaptadorNuvem(oficinaId, { papel } = {}) {
             reject(e);
           }
         };
-        for (const col of colecoes) {
-          let primeira = true;
-          let q = F.collection(db, 'oficinas', oficinaId, col);
-          // Movimentações de estoque crescem rápido: carrega só o último ano.
-          if (col === 'movimentos') q = F.query(q, F.where('data', '>=', addDias(hojeISO(), -365)));
-          desligar.push(
-            F.onSnapshot(
-              q,
-              (snap) => {
-                cbs.aoColecao(col, snap.docs.map((d) => ({ ...d.data(), id: d.id })));
-                if (primeira) {
-                  primeira = false;
-                  pronto();
-                }
-              },
-              falhou,
-            ),
-          );
-        }
+        for (const col of colecoes) ouvirColecao(col, cbs, pronto, falhou).catch(falhou);
         let primeiraCfg = true;
         desligar.push(
           F.onSnapshot(
@@ -299,22 +393,27 @@ export function criarAdaptadorNuvem(oficinaId, { papel } = {}) {
       });
     },
     gravar(col, id, dados) {
-      return F.setDoc(ref(col, id), dados);
+      local({ op: 'gravar', col, id, dados });
+      return F.setDoc(ref(col, id), { ...dados, ...marca() });
     },
     alterar(col, id, patch) {
-      return F.updateDoc(ref(col, id), converterPatch(patch));
+      local({ op: 'alterar', col, id, dados: patch });
+      return F.updateDoc(ref(col, id), { ...converterPatch(patch), ...marca() });
     },
+    // Some com os dados e deixa só a marca de excluído (os outros aparelhos ficam sabendo).
     apagar(col, id) {
-      return F.deleteDoc(ref(col, id));
+      local({ op: 'apagar', col, id });
+      return F.setDoc(ref(col, id), { id, excluido: true, atualizadoEm: agoraISO(), ...marca() });
     },
     async lote(ops) {
+      for (const o of ops) local(o);
       // O Firestore aceita até 500 operações por lote.
       for (let i = 0; i < ops.length; i += 400) {
         const b = F.writeBatch(db);
         for (const o of ops.slice(i, i + 400)) {
-          if (o.op === 'apagar') b.delete(ref(o.col, o.id));
-          else if (o.op === 'alterar') b.update(ref(o.col, o.id), converterPatch(o.dados));
-          else b.set(ref(o.col, o.id), o.dados);
+          if (o.op === 'apagar') b.set(ref(o.col, o.id), { id: o.id, excluido: true, atualizadoEm: agoraISO(), ...marca() });
+          else if (o.op === 'alterar') b.update(ref(o.col, o.id), { ...converterPatch(o.dados), ...marca() });
+          else b.set(ref(o.col, o.id), { ...o.dados, ...marca() });
         }
         await b.commit();
       }

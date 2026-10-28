@@ -52,11 +52,10 @@ export async function irPara(page, hash) {
 }
 
 // Lê dados direto da camada de dados do sistema (mesmo módulo que a página usa).
+// O texto é avaliado pelo próprio Playwright (como um console de desenvolvedor), não pela página:
+// a página tem CSP sem 'unsafe-eval', então ela mesma não pode avaliar texto como código.
 export async function lerStore(page, fnTexto) {
-  return page.evaluate(async (corpo) => {
-    const { store } = await import('/js/store.js');
-    return new Function('store', `return (${corpo})(store)`)(store);
-  }, fnTexto);
+  return page.evaluate(`(async () => { const { store } = await import('/js/store.js'); return (${fnTexto})(store); })()`);
 }
 
 // Clica numa opção de um menu suspenso aberto.
