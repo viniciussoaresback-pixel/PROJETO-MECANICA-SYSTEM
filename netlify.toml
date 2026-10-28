@@ -1,0 +1,16 @@
+# Configuração do Netlify: publica a pasta app/ (site estático, sem build).
+[build]
+  publish = "app"
+  command = ""
+
+# O service worker não pode ficar em cache, senão as atualizações demoram a chegar.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
