@@ -25,7 +25,8 @@ estoque, agenda, financeiro, relatórios e WhatsApp** — no computador, no tabl
 | **Financeiro** | Entradas (pagamentos das OS), contas a receber, contas a pagar (com repetição mensal), extrato do mês e resumo por forma de pagamento e categoria. |
 | **Relatórios** | Faturado, recebido, ticket médio, lucro bruto, serviços e peças mais vendidos, **comissão por mecânico**, melhores clientes. Imprime e exporta para Excel. |
 | **Equipe e acessos** | Cadastro de mecânicos (com comissão). Login individual para cada pessoa com perfis: **Dono**, **Atendente** e **Mecânico** (mecânico não vê o financeiro). |
-| **Outros** | Tema claro/escuro, busca global (**Ctrl+K**), funciona sem internet (as alterações sobem quando a conexão volta), pode ser instalado como aplicativo no celular e no computador, backup em arquivo e planilhas. |
+| **Temas** | 8 temas prontos (Clássico, Racing, Garagem, Limpo, Premium, Eco, Neon, Industrial), qualquer cor (ou a cor tirada da **logo**), menu lateral escuro/claro/na cor da marca, cantos, fonte e tamanho. Vale para toda a equipe e aparece também nos impressos. Em **Configurações → Aparência**. |
+| **Outros** | Modo claro/escuro (por aparelho), busca global (**Ctrl+K**), funciona sem internet (as alterações sobem quando a conexão volta), pode ser instalado como aplicativo no celular e no computador, backup em arquivo e planilhas. |
 
 <p align="center">
   <img src="docs/telas/quadro.jpg" width="49%" alt="Quadro de ordens de serviço">
@@ -52,9 +53,13 @@ No [Console do Firebase](https://console.firebase.google.com/), projeto **mecani
 2. **Firestore Database**: crie o banco (se ainda não existir), em modo de produção.
 3. **Firestore Database → Regras**: apague o que estiver lá, cole todo o conteúdo do arquivo
    [`firestore.rules`](firestore.rules) e clique em **Publicar**.
-   ⚠️ **Este passo é obrigatório.** Sem ele o sistema não consegue ler/gravar (ou, pior, os dados ficam abertos).
+   ⚠️ **Este passo é obrigatório** e precisa ser repetido sempre que o arquivo mudar. Sem ele o sistema não consegue
+   ler/gravar (ou, pior, os dados ficam abertos).
 4. **Authentication → Settings → Authorized domains**: adicione o endereço onde o site vai ficar
    (ex.: `mecanica-pro.netlify.app`).
+
+> 🔒 Depois, faça a lista de segurança e economia do [**SEGURANCA.md**](SEGURANCA.md) (plano gratuito sem cobrança,
+> chave presa ao seu site, proteção contra robôs). Leva uns 20 minutos.
 
 ### 2. Publicar o site
 
@@ -62,7 +67,7 @@ Escolha **um** dos caminhos:
 
 - **Netlify (recomendado):** em [app.netlify.com](https://app.netlify.com/start), clique em *Import from Git*,
   escolha este repositório e a branch **`main`**. O arquivo [`netlify.toml`](netlify.toml) já diz tudo
-  (pasta `app`, sem comando de build), então é só clicar em **Deploy**. Cada mudança no `main` publica sozinha.
+  (pasta `app`; o único "build" é carimbar a versão no `sw.js`), então é só clicar em **Deploy**. Cada mudança no `main` publica sozinha.
   Também dá para arrastar a pasta `app` direto em [app.netlify.com/drop](https://app.netlify.com/drop).
 - **Vercel:** importe este repositório em [vercel.com](https://vercel.com/new) e, em
   *Root Directory*, escolha a pasta **`app`**. Não precisa de comando de build. Cada mudança no `main` publica sozinha.
@@ -78,8 +83,11 @@ Escolha **um** dos caminhos:
 3. Para dar acesso a funcionários: **Configurações → Usuários e acessos → Convidar pessoa**. A pessoa abre o site,
    clica em **Criar conta** com o mesmo e-mail do convite e já entra na sua oficina, com o perfil escolhido.
 
-> Quer que só convidados consigam criar conta? Em [`app/js/firebase-config.js`](app/js/firebase-config.js),
-> troque `PERMITIR_NOVAS_OFICINAS` para `false`.
+> **Oficina nova precisa de liberação.** Por segurança, um estranho que crie conta não consegue abrir oficina nem
+> gravar nada. Você (dono) e as pessoas que você convidar entram normalmente. Para liberar a oficina de outra
+> pessoa, veja [SEGURANCA.md → Liberar uma oficina nova](SEGURANCA.md#26-liberar-uma-oficina-nova).
+> Para esconder de vez a opção "abrir oficina nova" da tela, troque `PERMITIR_NOVAS_OFICINAS` para `false` em
+> [`app/js/firebase-config.js`](app/js/firebase-config.js).
 
 ### Dados da versão anterior
 
@@ -110,13 +118,15 @@ As permissões também são garantidas pelas regras do banco (`firestore.rules`)
 
 ```
 app/                    ← o site (é isso que vai para o ar)
-  index.html            página única; carrega js/app.js
+  index.html            página única; carrega js/tema-inicial.js e js/inicio.js (sem script embutido, por causa da CSP)
   css/app.css           visual (tema claro e escuro por variáveis)
   css/impressao.css     documentos impressos (OS, orçamento, recibo, relatórios)
   js/app.js             início, tela de entrada, menu, navegação (#/rota)
   js/store.js           dados em memória + adaptador do navegador (demonstração)
   js/nuvem.js           Firebase: login, banco, convites, migração da versão antiga
   js/dominio.js         regras da oficina (salvar OS, estoque, alertas, lembretes)
+  js/aparencia.js       temas, cores, fontes e menu lateral
+  js/cores.js           gera a paleta a partir de uma cor, garantindo contraste legível
   js/utils.js           funções puras (dinheiro, datas, CPF/CNPJ, placa, cálculo da OS…)
   js/ui.js              janelas, avisos, campos, seletor com busca, HTML seguro
   js/formularios.js     formulários (cliente, veículo, peça, despesa, agendamento…)
@@ -130,8 +140,11 @@ tests/                  testes automáticos
 
 - Sem framework e sem build: os arquivos são servidos como estão (módulos ES).
 - Todo texto digitado passa pela função `html` (template string) de `ui.js`, que escapa o conteúdo (proteção contra XSS).
-- Arquivo novo em `app/`? Inclua na lista `ARQUIVOS` do `app/sw.js` e aumente a `VERSAO` (lá e em `VERSAO_APP`,
-  no `app/js/app.js`). O teste `tests/unit/dados.test.mjs` avisa se esquecer.
+- Arquivo novo em `app/`? Inclua na lista `ARQUIVOS` do `app/sw.js`. O teste `tests/unit/dados.test.mjs` avisa se esquecer.
+- O Netlify troca o `__BUILD__` do `sw.js` pelo código do commit a cada publicação, então os aparelhos baixam a
+  versão nova sozinhos (e aparece o aviso "Nova versão instalada"). Em outra hospedagem, aumente a `VERSAO` do
+  `sw.js` (e `VERSAO_APP` no `app/js/app.js`) a cada mudança.
+- Sem script embutido no HTML (`onclick=`, `<script>` sem `src`): a política de segurança (CSP) bloqueia.
 
 ### Rodar e testar no computador
 

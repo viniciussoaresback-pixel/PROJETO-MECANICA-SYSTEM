@@ -1,5 +1,7 @@
 // Configurações: oficina, impressão, mensagens, usuários, aparência, backup e conta.
 import { definirTema, moduloNuvem, recomecarDemo, sair, sairDemo, substituirHash, temaAtual } from '../app.js';
+import { APARENCIA_PADRAO, CORES, corDaLogo, FONTES, normalizarAparencia, TEMAS_PRONTOS } from '../aparencia.js';
+import { paletaDoTema } from '../cores.js';
 import { UFS } from '../formularios.js';
 import { COLECOES, MENSAGENS_PADRAO, PAPEIS, pode, store } from '../store.js';
 import {
@@ -299,15 +301,74 @@ export default {
     // ---------- Aparência ----------
     function secaoAparencia() {
       const t = temaAtual();
-      painel.innerHTML = String(cartao('Aparência', 'O tema escuro cansa menos a vista em ambientes com pouca luz.', html`<div class="cartao-tema">
-        ${[['claro', 'Claro'], ['escuro', 'Escuro'], ['auto', 'Automático (igual ao aparelho)']].map(([id, nome]) => html`<button type="button" class="opcao-tema ${t === id ? 'ativo' : ''}" data-tema-op="${id}"><span class="amostra ${id}"></span>${nome}</button>`)}
-      </div>`));
+      const podeMudar = pode('config-oficina');
+      const ap = normalizarAparencia(store.estado.config.aparencia);
+      const igual = (x) => x.cor.toLowerCase() === ap.cor.toLowerCase() && x.lateral === ap.lateral && x.cantos === ap.cantos && x.fonte === ap.fonte;
+      const miniatura = (x) => {
+        const pal = paletaDoTema(x.cor);
+        const lat = x.lateral === 'clara' ? ['#ffffff', '#475569'] : x.lateral === 'marca' ? [pal.lateralMarca, '#ffffff'] : ['#0f172a', '#cbd5e1'];
+        const r = x.cantos === 'reto' ? 2 : x.cantos === 'bem' ? 8 : 4;
+        return html`<span class="miniatura" aria-hidden="true"><span class="m-lat" style="background:${lat[0]};color:${lat[1]}"><i style="background:${pal.claro.acento};opacity:1"></i><i></i><i></i><i></i></span>
+          <span class="m-corpo"><i></i><b style="background:${pal.claro.acento};border-radius:${r}px"></b><i></i></span></span>`;
+      };
+      const segmentado = (nome, valor, opcoes) => html`<div class="segmentado" role="radiogroup">${opcoes.map(([id, rot]) => html`<label><input type="radio" name="${nome}" value="${id}" ${valor === id ? seguro('checked') : ''}><span>${rot}</span></label>`)}</div>`;
+      painel.innerHTML = String(html`<div class="grade">
+        ${podeMudar ? cartao('Tema da oficina', 'Deixe o sistema com a cara da sua oficina. Vale para todos os usuários e também aparece nos documentos impressos.', html`<div class="form">
+          <div class="ajuste-linha"><label>Temas prontos</label>
+            <div class="temas-prontos">${TEMAS_PRONTOS.map((x) => html`<button type="button" class="tema-pronto ${igual(x) ? 'ativo' : ''}" data-pronto="${x.id}">${miniatura(x)}<strong>${x.nome}</strong><small>${x.descricao}</small></button>`)}</div>
+          </div>
+          <div class="ajuste-linha"><label>Cor principal</label>
+            <div class="cores-acento">
+              ${CORES.map((c) => html`<button type="button" class="cor-acento ${c.cor.toLowerCase() === ap.cor.toLowerCase() ? 'ativo' : ''}" data-cor="${c.cor}" style="background:${c.cor}" title="${c.nome}" aria-label="Cor ${c.nome}"></button>`)}
+              <label class="cor-personalizada">Outra cor <input type="color" data-cor-livre value="${ap.cor}" aria-label="Escolher outra cor"></label>
+              ${store.estado.config.logo ? html`<button type="button" class="btn btn-sm" data-cor-logo>${icone('image')}Usar a cor da logo</button>` : ''}
+            </div>
+          </div>
+          <div class="ajuste-linha"><label>Menu lateral</label>${segmentado('lateral', ap.lateral, [['escura', 'Escuro'], ['clara', 'Claro'], ['marca', 'Na cor da oficina']])}</div>
+          <div class="ajuste-linha"><label>Cantos</label>${segmentado('cantos', ap.cantos, [['reto', 'Retos'], ['arredondado', 'Arredondados'], ['bem', 'Bem redondos']])}</div>
+          <div class="ajuste-linha"><label>Letra</label>
+            <div class="opcoes-fonte">${Object.entries(FONTES).map(([id, f]) => html`<button type="button" class="opcao-fonte ${ap.fonte === id ? 'ativo' : ''}" data-fonte="${id}" style="font-family:${f.familia || 'system-ui'}, system-ui, sans-serif"><span>Aa</span><small>${f.nome}</small></button>`)}</div>
+          </div>
+          <div class="ajuste-linha"><label>Espaçamento</label>${segmentado('densidade', ap.densidade, [['confortavel', 'Confortável'], ['compacta', 'Compacto (cabe mais na tela)']])}</div>
+          <div><button type="button" class="link" data-padrao>${icone('rotate-ccw')} Voltar ao tema original</button></div>
+        </div>`) : ''}
+        ${cartao('Claro ou escuro', 'Escolha só para este aparelho. O tema escuro cansa menos a vista em ambientes com pouca luz.', html`<div class="cartao-tema">
+          ${[['claro', 'Claro'], ['escuro', 'Escuro'], ['auto', 'Automático (igual ao aparelho)']].map(([id, nome]) => html`<button type="button" class="opcao-tema ${t === id ? 'ativo' : ''}" data-tema-op="${id}"><span class="amostra ${id}"></span>${nome}</button>`)}
+        </div>`)}
+      </div>`);
       for (const b of painel.querySelectorAll('[data-tema-op]')) {
         b.onclick = () => {
           definirTema(b.dataset.temaOp);
           secaoAparencia();
         };
       }
+      if (!podeMudar) return;
+      const anterior = { ...ap };
+      const mudar = (patch, aviso = '') => {
+        const nova = normalizarAparencia({ ...normalizarAparencia(store.estado.config.aparencia), ...patch });
+        store.salvarConfig({ aparencia: nova });
+        secaoAparencia();
+        if (aviso) toast(aviso, 'ok', { acao: { texto: 'Desfazer', fn: () => store.salvarConfig({ aparencia: anterior }) } });
+      };
+      for (const b of painel.querySelectorAll('[data-pronto]')) {
+        b.onclick = () => {
+          const x = TEMAS_PRONTOS.find((y) => y.id === b.dataset.pronto);
+          mudar({ cor: x.cor, lateral: x.lateral, cantos: x.cantos, fonte: x.fonte }, `Tema “${x.nome}” aplicado`);
+        };
+      }
+      for (const b of painel.querySelectorAll('[data-cor]')) b.onclick = () => mudar({ cor: b.dataset.cor });
+      const livre = painel.querySelector('[data-cor-livre]');
+      livre.addEventListener('change', () => mudar({ cor: livre.value }));
+      painel.querySelector('[data-cor-logo]')?.addEventListener('click', async () => {
+        const cor = await corDaLogo(store.estado.config.logo).catch(() => null);
+        if (!cor) return toast('Não deu para achar uma cor na logo. Escolha uma das cores acima.', 'info');
+        mudar({ cor }, 'Usando a cor da logo');
+      });
+      for (const nome of ['lateral', 'cantos', 'densidade']) {
+        for (const r of painel.querySelectorAll(`[name=${nome}]`)) r.onchange = () => mudar({ [nome]: r.value });
+      }
+      for (const b of painel.querySelectorAll('[data-fonte]')) b.onclick = () => mudar({ fonte: b.dataset.fonte });
+      painel.querySelector('[data-padrao]').onclick = () => mudar({ ...APARENCIA_PADRAO }, 'Tema original de volta');
     }
 
     // ---------- Backup ----------
@@ -400,7 +461,7 @@ export default {
         </dl>`, html`<button type="button" class="btn btn-fantasma perigo" data-sair>${icone('log-out')}${demo ? 'Sair da demonstração' : 'Sair do sistema'}</button>`)}
         ${!demo ? cartao('Trocar senha', '', html`<form class="form" data-senha novalidate style="max-width:420px">
           ${campo({ rotulo: 'Senha atual', nome: 'atual', tipo: 'password' })}
-          ${campo({ rotulo: 'Nova senha (mínimo 6 caracteres)', nome: 'nova', tipo: 'password' })}
+          ${campo({ rotulo: 'Nova senha (mínimo 8 caracteres)', nome: 'nova', tipo: 'password' })}
           ${campo({ rotulo: 'Repita a nova senha', nome: 'repete', tipo: 'password' })}
           <div><button type="submit" class="btn btn-primario">${icone('key-round')}Trocar senha</button></div>
         </form>`) : ''}
@@ -413,7 +474,7 @@ export default {
           limparErros(f);
           const d = lerFormulario(f);
           if (!d.atual) return erroCampo(f, 'atual', 'Informe a senha atual');
-          if ((d.nova || '').length < 6) return erroCampo(f, 'nova', 'Mínimo de 6 caracteres');
+          if ((d.nova || '').length < 8) return erroCampo(f, 'nova', 'Mínimo de 8 caracteres');
           if (d.nova !== d.repete) return erroCampo(f, 'repete', 'As senhas não são iguais');
           const nuvem = moduloNuvem();
           try {

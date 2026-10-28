@@ -132,3 +132,34 @@ test('painel: lembrete de revisão pelo WhatsApp marca como avisado', async ({ p
   await irPara(page, '#/painel');
   await expect(page.locator(`[data-lembrar="${id}"]`)).toContainText('Avisar de novo');
 });
+
+test('aparência: tema pronto, cor própria e opções valem para a oficina e continuam depois de reabrir', async ({ page }) => {
+  const erros = vigiarErros(page);
+  await abrirDemo(page, '#/config?aba=aparencia');
+  const acento = () => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--acento').trim());
+  const antes = await acento();
+  await page.locator('[data-pronto=racing]').click();
+  await expect(page.locator('[data-pronto=racing]')).toHaveClass(/ativo/);
+  expect(await acento()).not.toBe(antes);
+  expect(await page.evaluate(() => document.documentElement.dataset.cantos)).toBe('reto');
+  await page.locator('label', { hasText: 'Na cor da oficina' }).click();
+  expect(await page.evaluate(() => document.documentElement.dataset.lateral)).toBe('marca');
+  await page.locator('[data-cor-livre]').evaluate((el) => {
+    el.value = '#10b981';
+    el.dispatchEvent(new Event('change'));
+  });
+  await page.locator('label', { hasText: 'Compacto' }).click();
+  const ap = await lerStore(page, '(s) => s.estado.config.aparencia');
+  expect(ap).toMatchObject({ cor: '#10b981', lateral: 'marca', cantos: 'reto', densidade: 'compacta' });
+  await page.reload();
+  await expect(page.locator('.lateral')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.dataset.lateral)).toBe('marca');
+  expect(await page.evaluate(() => document.documentElement.dataset.densidade)).toBe('compacta');
+  // Volta ao original
+  await page.evaluate(() => {
+    location.hash = '#/config?aba=aparencia';
+  });
+  await page.getByRole('button', { name: /Voltar ao tema original/ }).click();
+  expect(await page.evaluate(() => document.documentElement.dataset.lateral)).toBe('escura');
+  expect(erros).toEqual([]);
+});

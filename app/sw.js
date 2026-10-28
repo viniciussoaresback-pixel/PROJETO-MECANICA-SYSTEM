@@ -1,7 +1,9 @@
 // Service worker: deixa o sistema abrir sem internet e permite instalar no celular/computador.
-// Estratégia: rede primeiro (sempre pega a versão nova quando há internet); sem internet, usa a cópia guardada.
-// Arquivo novo em app/? Inclua na lista abaixo (o teste tests/unit/sw.test.mjs confere).
-const VERSAO = 'mecanica-pro-v2.0.0';
+// Estratégia: os arquivos do sistema saem da cópia guardada no aparelho (abre na hora, sem gastar internet).
+// Quando sai versão nova, este arquivo muda (o Netlify troca __BUILD__ pelo código do commit a cada publicação),
+// o navegador baixa tudo de novo uma vez e o sistema avisa "nova versão instalada".
+// Arquivo novo em app/? Inclua na lista abaixo (o teste tests/unit/dados.test.mjs confere).
+const VERSAO = 'mecanica-pro-v2.1.0-__BUILD__';
 
 const ARQUIVOS = [
   './',
@@ -15,8 +17,10 @@ const ARQUIVOS = [
   './img/icone-maskable-512.png',
   './img/apple-touch-icon.png',
   './js/acoes-os.js',
+  './js/aparencia.js',
   './js/app.js',
   './js/busca.js',
+  './js/cores.js',
   './js/demo.js',
   './js/dominio.js',
   './js/firebase-config.js',
@@ -24,10 +28,12 @@ const ARQUIVOS = [
   './js/graficos.js',
   './js/icones.js',
   './js/impressao.js',
+  './js/inicio.js',
   './js/mensagens.js',
   './js/migracao.js',
   './js/nuvem.js',
   './js/store.js',
+  './js/tema-inicial.js',
   './js/ui.js',
   './js/utils.js',
   './js/views/agenda.js',
@@ -53,7 +59,7 @@ self.addEventListener('install', (e) => {
   e.waitUntil(
     caches
       .open(VERSAO)
-      .then((c) => c.addAll(ARQUIVOS))
+      .then((c) => c.addAll(ARQUIVOS.map((u) => new Request(u, { cache: 'reload' }))))
       .then(() => self.skipWaiting()),
   );
 });
@@ -67,21 +73,13 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-async function redePrimeiro(req) {
+async function cacheDoSistema(req) {
   const cache = await caches.open(VERSAO);
-  try {
-    const resp = await fetch(req);
-    if (resp.ok) cache.put(req, resp.clone());
-    return resp;
-  } catch (erro) {
-    const guardado = await cache.match(req, { ignoreSearch: true });
-    if (guardado) return guardado;
-    if (req.mode === 'navigate') {
-      const inicio = await cache.match('./index.html');
-      if (inicio) return inicio;
-    }
-    throw erro;
-  }
+  const guardado = req.mode === 'navigate' ? await cache.match('./index.html') : await cache.match(req, { ignoreSearch: true });
+  if (guardado) return guardado;
+  const resp = await fetch(req);
+  if (resp.ok && req.mode !== 'navigate') cache.put(req, resp.clone());
+  return resp;
 }
 
 async function cacheDepoisRede(req) {
@@ -101,7 +99,7 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin === self.location.origin) {
-    e.respondWith(redePrimeiro(req));
+    e.respondWith(cacheDoSistema(req));
   } else if (EXTERNOS.some((r) => r.test(req.url))) {
     e.respondWith(cacheDepoisRede(req));
   }

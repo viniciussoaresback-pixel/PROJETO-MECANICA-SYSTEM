@@ -1,5 +1,6 @@
 // Início do sistema: escolhe o modo (nuvem ou demonstração), mostra a tela de entrada,
 // monta o menu e cuida da navegação entre as telas.
+import { aparenciaGuardada, aplicarAparencia } from './aparencia.js';
 import { abrirBusca } from './busca.js';
 import { agendaDoDia, despesasAVencer, estoqueBaixo } from './dominio.js';
 import { criarAdaptadorLocal, gravarDadosLocais, PAPEIS, pode, store } from './store.js';
@@ -8,7 +9,7 @@ import {
 } from './ui.js';
 import { agoraISO, proximoNumero, STATUS_ABERTOS, validarEmail } from './utils.js';
 
-export const VERSAO_APP = '2.0.0';
+export const VERSAO_APP = '2.1.0';
 
 // ---------- Telas (rotas) ----------
 const MENU = [
@@ -151,8 +152,8 @@ function telaEntrada({ erroNuvem = false, mensagem = '' } = {}) {
           <div class="campo"><label for="cri-oficina">Nome da oficina</label><input id="cri-oficina" name="oficina" type="text" placeholder="Ex.: Auto Center Silva"></div>
           <div class="campo"><label for="cri-nome">Seu nome</label><input id="cri-nome" name="nome" type="text" autocomplete="name" required></div>
           <div class="campo"><label for="cri-email">E-mail</label><input id="cri-email" name="email" type="email" autocomplete="username" required></div>
-          <div class="campo"><label for="cri-senha">Senha (mínimo 6 caracteres)</label>
-            <div class="campo-senha"><input id="cri-senha" name="senha" type="password" autocomplete="new-password" required minlength="6">
+          <div class="campo"><label for="cri-senha">Senha (mínimo 8 caracteres)</label>
+            <div class="campo-senha"><input id="cri-senha" name="senha" type="password" autocomplete="new-password" required minlength="8">
             <button type="button" class="btn-icone" data-ver-senha aria-label="Mostrar senha">${icone('eye')}</button></div>
           </div>
           <p class="campo-ajuda">Foi convidado por uma oficina? Use o mesmo e-mail do convite — você entra direto na oficina que convidou.</p>
@@ -236,7 +237,7 @@ function telaEntrada({ erroNuvem = false, mensagem = '' } = {}) {
     const d = { oficina: fCriar.oficina.value.trim(), nome: fCriar.nome.value.trim(), email: fCriar.email.value.trim(), senha: fCriar.senha.value };
     if (!d.nome) return erro(fCriar, 'Informe seu nome.');
     if (!validarEmail(d.email)) return erro(fCriar, 'Informe um e-mail válido.');
-    if (d.senha.length < 6) return erro(fCriar, 'A senha precisa ter pelo menos 6 caracteres.');
+    if (d.senha.length < 8) return erro(fCriar, 'A senha precisa ter pelo menos 8 caracteres.');
     if (!nuvem) return erro(fCriar, 'Sem conexão com o servidor. Recarregue a página.');
     ocupado(fCriar, true);
     cadastroPendente = { nome: d.nome, nomeOficina: d.oficina, criando: true };
@@ -337,7 +338,8 @@ async function iniciarNuvem() {
       sessao = await nuvem.resolverOficina(user, extra);
     } catch (e) {
       console.error(e);
-      if (e.code === 'cadastro-fechado') await user.delete().catch(() => {});
+      // Conta criada agora sem liberação: apaga o login para não deixar conta órfã.
+      if (e.code === 'cadastro-fechado' && extra.criando) await user.delete().catch(() => {});
       await nuvem.sair().catch(() => {});
       telaEntrada({ mensagem: nuvem.mensagemErro(e) });
       return;
@@ -519,7 +521,10 @@ window.addEventListener('offline', () => {
 
 store.inscrever((cols) => {
   if (!raizApp) return;
-  if (cols.has('config') || cols.has('*')) atualizarMarca();
+  if (cols.has('config') || cols.has('*')) {
+    atualizarMarca();
+    aplicarAparencia(store.estado.config.aparencia);
+  }
   atualizarContadores();
   atualizarSincronia();
   const relevantes = new Set([...cols].filter((c) => c !== '_sincronia'));
@@ -573,7 +578,7 @@ async function aoMudarHash() {
     mod = await MODULOS[rota.modulo]();
   } catch (e) {
     console.error(e);
-    conteudo.innerHTML = String(vazio({ icone: 'wifi-off', titulo: 'Não foi possível abrir esta tela', texto: 'Verifique a internet e tente de novo.', acao: html`<button class="btn btn-primario" onclick="location.reload()">Recarregar</button>` }));
+    conteudo.innerHTML = String(vazio({ icone: 'wifi-off', titulo: 'Não foi possível abrir esta tela', texto: 'Verifique a internet e tente de novo.', acao: html`<a class="btn btn-primario" href="">Recarregar</a>` }));
     return;
   }
   if (atual !== meu) return; // a pessoa já foi para outra tela
@@ -654,12 +659,22 @@ window.addEventListener('beforeunload', (e) => {
 function registrarSW() {
   if (!('serviceWorker' in navigator)) return;
   if (['localhost', '127.0.0.1'].includes(location.hostname) && !localStorage.getItem('mp:sw-local')) return;
-  navigator.serviceWorker.register('./sw.js').catch((e) => console.warn('Service worker não registrado', e));
+  const jaTinha = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker
+    .register('./sw.js')
+    .then((reg) => setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000))
+    .catch((e) => console.warn('Service worker não registrado', e));
+  // Versão nova publicada: avisa (sem recarregar sozinho, para não perder o que está sendo digitado).
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!jaTinha) return;
+    toast('Nova versão do sistema instalada.', 'info', { duracao: 60000, acao: { texto: 'Atualizar agora', fn: () => location.reload() } });
+  });
 }
 
 // ---------- Início ----------
 export async function iniciar() {
   aplicarTema();
+  aplicarAparencia(aparenciaGuardada(), { guardar: false });
   registrarSW();
   let modo = null;
   try {

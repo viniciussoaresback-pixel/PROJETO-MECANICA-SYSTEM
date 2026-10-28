@@ -1,7 +1,8 @@
-# Configuração do Netlify: publica a pasta app/ (site estático, sem build).
+# Configuração do Netlify: publica a pasta app/ (site estático, sem framework).
 [build]
   publish = "app"
-  command = ""
+  # Marca a versão do modo offline com o código do commit: cada publicação atualiza os aparelhos sozinha.
+  command = "sed -i \"s/__BUILD__/${COMMIT_REF:-local}/\" app/sw.js"
 
 # O service worker não pode ficar em cache, senão as atualizações demoram a chegar.
 [[headers]]
@@ -14,3 +15,8 @@
   [headers.values]
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
+    # Ninguém pode colocar o sistema dentro de outro site (golpe de "clique falso")
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=()"
+    Strict-Transport-Security = "max-age=31536000"

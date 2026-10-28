@@ -10,9 +10,14 @@ export const FIREBASE_CONFIG = {
   appId: '1:482231204593:web:5afc025124b67d17a0c750',
 };
 
-// true  = qualquer pessoa pode criar a conta de uma oficina nova na tela de entrada.
-// false = só entra quem foi convidado por uma oficina já existente.
+// Mostra a opção de abrir oficina nova na tela "Criar conta". Quem decide de verdade são as regras
+// do banco: só abre oficina nova quem foi liberado (ver SEGURANCA.md → "Liberar uma oficina nova").
+// false = a tela só aceita quem tem convite.
 export const PERMITIR_NOVAS_OFICINAS = true;
+
+// App Check (proteção contra robôs): cole aqui a "chave do site" do reCAPTCHA v3 depois de ativar
+// em Firebase → App Check. Vazio = desligado. Passo a passo em SEGURANCA.md.
+export const APP_CHECK_CHAVE = '';
 
 // Versão do Firebase carregada do CDN oficial.
 export const FIREBASE_VERSAO = '10.12.2';

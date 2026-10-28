@@ -125,7 +125,7 @@ describe('modo offline (service worker)', () => {
   test('a versão do app e a do service worker andam juntas', () => {
     const raiz = fileURLToPath(new URL('../../app/', import.meta.url));
     const versaoApp = readFileSync(join(raiz, 'js/app.js'), 'utf8').match(/VERSAO_APP = '([^']+)'/)[1];
-    const versaoSW = readFileSync(join(raiz, 'sw.js'), 'utf8').match(/VERSAO = 'mecanica-pro-v([^']+)'/)[1];
+    const versaoSW = readFileSync(join(raiz, 'sw.js'), 'utf8').match(/VERSAO = 'mecanica-pro-v([^'-]+)/)[1];
     assert.equal(versaoSW, versaoApp);
   });
 });

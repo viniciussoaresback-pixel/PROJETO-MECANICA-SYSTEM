@@ -7,24 +7,18 @@
   <meta name="description" content="Sistema de gestão para oficinas mecânicas: ordens de serviço, orçamentos, clientes, veículos, estoque, agenda, financeiro e WhatsApp.">
   <meta name="theme-color" content="#0f172a">
   <meta name="color-scheme" content="light dark">
+  <!-- Segurança: o navegador só executa código deste site e do Firebase/Google (bloqueia scripts injetados). -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com https://www.google.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://www.gstatic.com https://fonts.googleapis.com https://fonts.gstatic.com https://www.google.com https://viacep.com.br http://127.0.0.1:* ws://127.0.0.1:*; frame-src https://www.google.com https://*.firebaseapp.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="img/icone.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Mecânica Pro">
-  <script>
-    // Aplica o tema antes de desenhar a página (evita "piscar" branco no tema escuro).
-    (function () {
-      var p = 'auto';
-      try { p = localStorage.getItem('mp:tema') || 'auto'; } catch (e) {}
-      var escuro = p === 'escuro' || (p === 'auto' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
-      document.documentElement.dataset.tema = escuro ? 'escuro' : 'claro';
-    })();
-  </script>
+  <script src="js/tema-inicial.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'">
   <link rel="stylesheet" href="css/app.css">
   <link rel="stylesheet" href="css/impressao.css">
 </head>
@@ -42,9 +36,6 @@
   <noscript>
     <p style="padding:24px;font-family:sans-serif">O Mecânica Pro precisa do JavaScript ativado no navegador.</p>
   </noscript>
-  <script type="module">
-    import { iniciar } from './js/app.js';
-    iniciar();
-  </script>
+  <script type="module" src="js/inicio.js"></script>
 </body>
 </html>
